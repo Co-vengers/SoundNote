@@ -1,4 +1,4 @@
-# Video Transcriber
+# SoundNote
 
 A simple yet powerful tool for transcribing video and audio files using OpenAI's Whisper model.
 
