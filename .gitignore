@@ -1,4 +1,9 @@
 *.pyc
 __pycache__/
 .venv/
+media/
+.env
 project report.pages
+db.sqlite3
+.DS_Store
+.idea/
