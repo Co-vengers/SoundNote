@@ -2,28 +2,132 @@
 {% block title %}Video Transcript{% endblock %}
 
 {% block content %}
-<div class="card shadow p-4">
-    <h2 class="text-center">{{ video.title }}</h2>
+<div class="surface-card p-4 p-md-5">
+    <h2 class="page-title text-center">
+        {{ video.title }}
+        <span class="badge {% if video.status == 'completed' %}bg-success{% elif video.status == 'processing' %}bg-info{% elif video.status == 'failed' %}bg-danger{% else %}bg-warning text-dark{% endif %}">
+            {{ video.get_status_display }}
+        </span>
+    </h2>
 
     <div class="text-center mt-3">
-        <video width="100%" controls>
-            <source src="{{ video.file.url }}" type="video/mp4">
+        <video id="videoPlayer" width="100%" controls preload="metadata">
+            <source src="{{ video.file.url }}">
             Your browser does not support the video tag.
         </video>
     </div>
 
     <h4 class="mt-4">Transcription:</h4>
-    <p class="text-muted">
-        {% if video.transcript %}
-            {{ video.transcript }}
-        {% else %}
-            <em>Transcription is in progress...</em>
-        {% endif %}
-    </p>
+    {% if video.status == 'failed' %}
+        <div class="alert alert-danger text-center">
+            <strong>Transcription failed.</strong>
+            The worker encountered an error while processing this file.
+            Please delete and re-upload the video, or try a smaller Whisper model.
+        </div>
+    {% elif video.segments %}
+        <div class="list-group">
+            {% for seg in video.segments %}
+                <a href="#" class="list-group-item list-group-item-action segment-link" data-start="{{ seg.start }}">
+                    <strong>{{ seg.start|floatformat:1 }}s – {{ seg.end|floatformat:1 }}s</strong>
+                    <span class="ms-2">{{ seg.text }}</span>
+                </a>
+            {% endfor %}
+        </div>
+    {% elif video.transcript %}
+        <p class="text-muted">{{ video.transcript }}</p>
+    {% elif video.status == 'completed' %}
+        <div class="alert alert-warning text-center">
+            Transcription completed but no text was produced. The audio may be silent or unsupported.
+        </div>
+    {% else %}
+        <div class="text-center">
+            <div class="spinner-border spinner-border-sm text-info" role="status">
+                <span class="visually-hidden">Processing…</span>
+            </div>
+            <p class="text-muted mt-2"><em>Transcription is in progress… This page will update automatically.</em></p>
+        </div>
+    {% endif %}
 
-    <div class="text-center mt-4">
-        <a href="{% url 'upload_video' %}" class="btn btn-primary">Upload Another Video</a>
-        <a href="{% url 'video_list' %}" class="btn btn-secondary">View All Videos</a>
+    {% if video.status == 'completed' %}
+    <div class="text-center mt-3">
+        <strong>Download Transcript:</strong>
+        <a href="{% url 'download_transcript' video.id 'txt' %}" class="btn btn-soft btn-sm ms-2">TXT</a>
+        <a href="{% url 'download_transcript' video.id 'srt' %}" class="btn btn-soft btn-sm ms-1">SRT</a>
+    </div>
+    {% endif %}
+
+    <div class="text-center mt-4 d-flex justify-content-center gap-2 flex-wrap">
+        <a href="{% url 'upload_video' %}" class="btn btn-brand">Upload Another Video</a>
+        <a href="{% url 'video_list' %}" class="btn btn-soft">View All Videos</a>
+        <form method="post" action="{% url 'delete_video' video.id %}" onsubmit="return confirm('Delete &quot;{{ video.title }}&quot;? This cannot be undone.')">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger">Delete This Video</button>
+        </form>
     </div>
 </div>
+
+<div id="videoMeta"
+     data-status="{{ video.status }}"
+     data-status-url="{% url 'video_status' video.id %}"
+     hidden>
+</div>
+
+<script>
+    document.querySelectorAll('.segment-link').forEach(function(link) {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            var player = document.getElementById('videoPlayer');
+            player.currentTime = parseFloat(this.dataset.start);
+            player.play();
+        });
+    });
+
+    var meta = document.getElementById('videoMeta');
+    var status = meta.dataset.status;
+
+    if (status === 'pending' || status === 'processing') {
+        var pollingStopped = false;
+        var pollTimer = null;
+
+        function schedulePoll(delayMs) {
+            if (pollingStopped) {
+                return;
+            }
+            pollTimer = setTimeout(checkStatus, delayMs);
+        }
+
+        function checkStatus() {
+            fetch(meta.dataset.statusUrl, {
+                method: 'GET',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+                .then(function(response) {
+                    if (!response.ok) {
+                        throw new Error('Status check failed');
+                    }
+                    return response.json();
+                })
+                .then(function(data) {
+                    if (data.is_done) {
+                        pollingStopped = true;
+                        location.reload();
+                        return;
+                    }
+                    schedulePoll(5000);
+                })
+                .catch(function() {
+                    schedulePoll(10000);
+                });
+        }
+
+        schedulePoll(5000);
+
+        window.addEventListener('beforeunload', function() {
+            pollingStopped = true;
+            if (pollTimer) {
+                clearTimeout(pollTimer);
+            }
+        });
+    }
+</script>
 {% endblock %}

@@ -2,32 +2,100 @@
 {% block title %}Transcribed Videos{% endblock %}
 
 {% block content %}
-<h2 class="text-center">Uploaded Videos</h2>
+<h2 class="page-title text-center">Uploaded Videos</h2>
+<p class="page-subtitle text-center">Review recordings, open full transcript details, or remove files you no longer need.</p>
 
 {% if videos %}
-    <div class="row">
+    <div class="row g-4">
         {% for video in videos %}
             <div class="col-md-6">
-                <div class="card shadow-sm mb-4">
+                <div class="surface-card h-100">
                     <div class="card-body">
-                        <h5 class="card-title">{{ video.title }}</h5>
-                        <video width="100%" controls>
-                            <source src="{{ video.file.url }}" type="video/mp4">
+                        <h5 class="card-title">
+                            {{ video.title }}
+                            <span class="badge {% if video.status == 'completed' %}bg-success{% elif video.status == 'processing' %}bg-info{% elif video.status == 'failed' %}bg-danger{% else %}bg-warning text-dark{% endif %}">
+                                {{ video.get_status_display }}
+                            </span>
+                        </h5>
+                        <video width="100%" controls preload="none" class="lazy-video" data-src="{{ video.file.url }}">
                             Your browser does not support the video tag.
                         </video>
-                        <div class="text-center mt-3">
-                            <a href="{% url 'video_detail' video.id %}" class="btn btn-primary">View Transcript</a>
+                        <div class="text-center mt-3 d-flex justify-content-center gap-2">
+                            <a href="{% url 'video_detail' video.id %}" class="btn btn-brand btn-sm">View Transcript</a>
+                            <form method="post" action="{% url 'delete_video' video.id %}" onsubmit="return confirm('Delete &quot;{{ video.title }}&quot;? This cannot be undone.')">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                            </form>
                         </div>
                     </div>
                 </div>
             </div>
         {% endfor %}
     </div>
+
+    {% if videos.has_other_pages %}
+    <nav aria-label="Video list pagination">
+        <ul class="pagination justify-content-center">
+            {% if videos.has_previous %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ videos.previous_page_number }}">Previous</a>
+                </li>
+            {% else %}
+                <li class="page-item disabled">
+                    <span class="page-link">Previous</span>
+                </li>
+            {% endif %}
+
+            {% for num in videos.paginator.page_range %}
+                {% if videos.number == num %}
+                    <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+                {% else %}
+                    <li class="page-item"><a class="page-link" href="?page={{ num }}">{{ num }}</a></li>
+                {% endif %}
+            {% endfor %}
+
+            {% if videos.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ videos.next_page_number }}">Next</a>
+                </li>
+            {% else %}
+                <li class="page-item disabled">
+                    <span class="page-link">Next</span>
+                </li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
 {% else %}
     <p class="text-center text-muted">No videos uploaded yet.</p>
 {% endif %}
 
 <div class="text-center mt-4">
-    <a href="{% url 'upload_video' %}" class="btn btn-success">Upload a New Video</a>
+    <a href="{% url 'upload_video' %}" class="btn btn-brand">Upload New File</a>
 </div>
+
+<script>
+    document.querySelectorAll('.lazy-video').forEach(function(video) {
+        var loaded = false;
+
+        function loadSource() {
+            if (loaded) {
+                return;
+            }
+            var src = video.dataset.src;
+            if (!src) {
+                return;
+            }
+
+            var source = document.createElement('source');
+            source.src = src;
+            video.appendChild(source);
+            video.load();
+            loaded = true;
+        }
+
+        video.addEventListener('play', loadSource, { once: true });
+        video.addEventListener('click', loadSource, { once: true });
+    });
+</script>
 {% endblock %}

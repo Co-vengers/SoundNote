@@ -2,23 +2,46 @@
 {% block title %}Upload Video{% endblock %}
 
 {% block content %}
-<div class="card shadow p-4">
-    <h2 class="text-center">Upload a Video</h2>
-    <form method="post" enctype="multipart/form-data" class="mt-4">
+<div class="surface-card p-4 p-md-5">
+    <h2 class="page-title text-center">Upload And Transcribe</h2>
+    <p class="page-subtitle text-center">Choose a video or audio file and get transcript output in minutes.</p>
+    <form id="uploadForm" method="post" enctype="multipart/form-data" class="mt-4">
         {% csrf_token %}
-        <div class="mb-3">
-            <label class="form-label">Video Title</label>
-            {{ form.title }}
+        {% if form.errors %}
+        <div class="alert alert-danger">
+            {% for field, errors in form.errors.items %}
+                {% for error in errors %}
+                    <p class="mb-0">{{ error }}</p>
+                {% endfor %}
+            {% endfor %}
         </div>
+        {% endif %}
         <div class="mb-3">
             <label class="form-label">Choose File</label>
             {{ form.file }}
         </div>
-        <button type="submit" class="btn btn-primary w-100">Upload & Transcribe</button>
+        <div class="mb-3">
+            <label class="form-label">Whisper Model Size</label>
+            {{ form.model_size }}
+        </div>
+        <button type="submit" id="submitBtn" class="btn btn-brand w-100">Start Transcription</button>
+        <div id="uploadSpinner" class="text-center mt-3 d-none">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Uploading...</span>
+            </div>
+            <p class="mt-2 text-muted">Uploading your file, please wait...</p>
+        </div>
     </form>
 </div>
 
 <div class="text-center mt-3">
-    <a href="{% url 'video_list' %}" class="btn btn-secondary">View Transcribed Videos</a>
+    <a href="{% url 'video_list' %}" class="btn btn-soft">View Uploaded Videos</a>
 </div>
+
+<script>
+    document.getElementById('uploadForm').addEventListener('submit', function() {
+        document.getElementById('submitBtn').disabled = true;
+        document.getElementById('uploadSpinner').classList.remove('d-none');
+    });
+</script>
 {% endblock %}
