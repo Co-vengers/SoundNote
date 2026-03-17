@@ -1,0 +1,90 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: video_transcriber
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d video_transcriber"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  web:
+    build: .
+    restart: unless-stopped
+    working_dir: /app/video_transcriber
+    command: sh -c "python manage.py migrate && python manage.py requeue_stale_transcriptions --minutes=$${STALE_PROCESSING_MINUTES:-45} --model-size=$${RECOVERY_MODEL_SIZE:-small} && gunicorn video_transcriber.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 300"
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - whisper_cache:/cache/whisper
+    env_file:
+      - ./video_transcriber/.env
+    environment:
+      SECRET_KEY: ${SECRET_KEY:-insecure-local-dev-key}
+      DEBUG: ${DEBUG:-True}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0}
+      DB_ENGINE: postgres
+      DB_NAME: ${DB_NAME:-video_transcriber}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_HOST: db
+      DB_PORT: 5432
+      STALE_PROCESSING_MINUTES: ${STALE_PROCESSING_MINUTES:-45}
+      RECOVERY_MODEL_SIZE: ${RECOVERY_MODEL_SIZE:-small}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      XDG_CACHE_HOME: /cache
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: .
+    restart: unless-stopped
+    working_dir: /app/video_transcriber
+    command: sh -c "mkdir -p /cache/whisper && chmod -R 777 /cache && celery -A video_transcriber worker --loglevel=info --pool=solo --concurrency=4 --uid=nobody --gid=nogroup"
+    volumes:
+      - .:/app
+      - whisper_cache:/cache/whisper
+    env_file:
+      - ./video_transcriber/.env
+    environment:
+      SECRET_KEY: ${SECRET_KEY:-insecure-local-dev-key}
+      DEBUG: ${DEBUG:-True}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0}
+      DB_ENGINE: postgres
+      DB_NAME: ${DB_NAME:-video_transcriber}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_HOST: db
+      DB_PORT: 5432
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      XDG_CACHE_HOME: /cache
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  whisper_cache:
